@@ -248,28 +248,34 @@ renderBoard board =
 
 gameTable : Board -> GEl.Element
 gameTable board = 
-  let shiftButtonSpec = 
+  let -- where should the shift buttons be places
+      shiftButtonSpec = 
         [ (North, movableCols board )
         , (South, movableCols board)
         , (West, movableRows board)
         , (East, movableRows board) ]
-
+      -- calculates the position of a button
       buttonPos side idx = case side of
         West -> boardToCanvas board (-1, idx)
         East -> boardToCanvas board (board.width, idx)
         North -> boardToCanvas board (idx, -1)
         South -> boardToCanvas board (idx, board.height)
-
+      -- creates a clickable button
       mkButton side idx = shiftButtonArrow side
         |> GInp.clickable (Signal.send shiftChannel { side = side, index = idx} )
         |> GCol.toForm
         |> GCol.move (buttonPos side idx)
-
+      -- creates all buttons
       shiftButtons = List.concatMap (\(s,is) -> List.map (mkButton s) is) shiftButtonSpec
-
+      -- size in pixels of the board
       bsize = boardRealSize board
-  in [renderBoard board] ++ shiftButtons
-    |> GCol.collage (bsize.width+pieceSize*2) (bsize.height+pieceSize*2)
+      -- game board
+      boardElement = [renderBoard board] ++ shiftButtons
+        |> GCol.collage (bsize.width+pieceSize*2) (bsize.height+pieceSize*2)
+      infoElement = GEl.flow GEl.down
+        [ [renderPiece board.freePiece] |> GCol.collage pieceSize pieceSize
+        ]
+  in boardElement `GEl.beside` infoElement
 
 -- * Specific game rules (fixed size and limited number of players)
 
@@ -398,17 +404,36 @@ foundTarget board = case Dict.get (currentPlayer board).position board.pieces of
 
 shift : Shift -> Board -> Board
 shift shiftCmd board = 
-  let shiftCoords = if isHorizontal shiftCmd.side 
+  let -- positions of the pieces that are shifted
+      shiftCoords = if isHorizontal shiftCmd.side 
         then List.map (\i -> (i, shiftCmd.index)) [0..board.width-1]
         else List.map (\i -> (shiftCmd.index, i)) [0..board.width-1]
+      -- the direction we shift in
       shiftDir = opposite shiftCmd.side
+
+      -- the position of the piece that is shifted out
+      shiftEdgePos side = case side of
+        North -> (shiftCmd.index, board.height-1)
+        South -> (shiftCmd.index, 0)
+        West -> (board.width-1, shiftCmd.index)
+        East -> (0, shiftCmd.index)
+
+      shiftedOut = shiftEdgePos shiftCmd.side
+      shiftedIn  = shiftEdgePos shiftDir
+
       -- Partition pieces by which get shifted and which stay in place
       shifted (x,y) _ = if isHorizontal shiftCmd.side
         then y == shiftCmd.index else x == shiftCmd.index
       (removed,rest) = Dict.partition shifted board.pieces
       -- Insert shifted
-      newBoard = newBoard --List.foldl (\pos -> Dict.insert (pos `to` shiftDir)) rest
-  in shift shiftCmd board
+      doShift pos dict = if pos == shiftedOut
+        then dict else Dict.insert (pos `to` shiftDir) (unsafeGet pos removed) dict
+      newBoard = List.foldl doShift rest shiftCoords -- insert shifted pieces
+        |> Dict.insert shiftedIn board.freePiece -- insert new piece
+      -- piece that has fallen out
+      newFree = unsafeGet shiftedOut removed
+      -- TODO: Take care of player figures
+  in { board | pieces <- newBoard, freePiece <- newFree }
 
 
 
@@ -418,11 +443,14 @@ shift shiftCmd board =
 shiftChannel : Signal.Channel Shift
 shiftChannel = Signal.channel { side = North, index = -1 }
 
-testGame = fst (newGame (Random.initialSeed 42) ["John", "Max", "Hinz"])
-  |> moveTo South
+testGame : Signal Shift -> Signal Board
+testGame shiftSig = 
+  let initial = fst (newGame (Random.initialSeed 42) ["John", "Max", "Hinz"])
+      do shiftCmd board = shift shiftCmd board
+  in Signal.foldp do initial shiftSig
 
 main : Signal GEl.Element
-main = (\shift -> gameTable testGame) <~ Signal.subscribe shiftChannel
+main = gameTable <~ testGame (Signal.subscribe shiftChannel)
 
 
 -- * Utility functions
@@ -466,5 +494,5 @@ init xs = case xs of
   (x::xs) -> x :: init xs
 
 -- | When you know there must be an element.
-getUnsafe : comparable -> Dict.Dict comparable v -> v
-getUnsafe key = Dict.get key >> maybeToList >> List.head
+unsafeGet : comparable -> Dict.Dict comparable v -> v
+unsafeGet key = Dict.get key >> maybeToList >> List.head
