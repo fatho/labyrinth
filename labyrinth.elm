@@ -11,18 +11,22 @@ import Graphics.Collage (defaultLine)
 import Graphics.Collage as GCol
 import Graphics.Element as GEl
 import Graphics.Input as GInp
+import Graphics.Input.Field as GInp
+import Html
+import Html.Attributes as Html
 import Maybe (Maybe (..), andThen)
 import Maybe
 import Mouse
 import Keyboard
 import Signal
 import Signal ((<~),(~), Signal)
+import String
 import Random
 import Random.Array as RndArr
 -- Workaround, same as above
 import Text
 import Text (defaultStyle)
-import Time (..)
+import Time
 import Window
 
 -- | Currently, the treasures to find are simply represented by a string. This might change.
@@ -65,6 +69,26 @@ type alias Player =
 type Orientation = North | East | South | West
 
 type AngularDir = CW | CCW
+
+-- | Defines possible user interactions.
+type UserEvent
+  = StartGame Time.Time
+  | UpdatePlayerNames (List GInp.Content)
+  | RotateFreePiece AngularDir
+  | ShiftRow Shift
+  | MoveToken Orientation
+  | EndTurn
+  | Exit
+
+-- | Defines possible application outputs.
+type Scene
+  = AskPlayerNames (List GInp.Content)
+  | InGame TurnState Board
+  | GameOver Player
+
+type TurnState
+  = Shifting
+  | Moving
 
 -- | A shift action is characterized by the side where the new piece 
 -- is shifted in and the index of that row or column.
@@ -188,12 +212,9 @@ renderPiece blk =
       -- build walls from a list of coordinates
       wayFromCoords = List.map (flip GCol.move way)
       -- If a treasure is present, render it too
-      treasureIcon = blk.treasure 
-        |> Maybe.map renderTreasure
-        |> maybeToList
   in GCol.group <|
     [ wall, way ] ++ (wayFromCoords <| List.filterMap keepIfOpen sides) 
-    ++ treasureIcon ++ [outline]
+    ++ [outline]
 
 -- * Board rendering
 
@@ -231,23 +252,87 @@ shiftButtonArrow side =
 renderBoard : Board -> GCol.Form
 renderBoard board = 
   let b2c = boardToCanvas board
-      renderCell pos = case Dict.get pos board.pieces of
+      -- render ground of cell
+      renderGroundAt pos = case Dict.get pos board.pieces of
         Nothing -> []
-        Just piece -> [renderPiece piece 
-          |> GCol.move (b2c pos)]
+        Just piece -> [renderPiece piece |> GCol.move (b2c pos)]
+      -- render treasure of cell
+      renderTreasureAt pos = case Dict.get pos board.pieces of
+        Nothing -> []
+        Just piece -> piece.treasure 
+            |> Maybe.map renderTreasure 
+            |> Maybe.map (GCol.move (b2c pos))
+            |> maybeToList
       -- rendered pieces
       pieces = (,) `List.map` [0..board.width-1] `ap` [0..board.height-1]
-        |> List.concatMap renderCell
+        |> List.concatMap renderGroundAt
+      -- rendered treasures
+      treasures = (,) `List.map` [0..board.width-1] `ap` [0..board.height-1]
+        |> List.concatMap renderTreasureAt
       -- player bases
       homes = List.map (\p -> renderHome p.color |> GCol.move (b2c p.home)) board.players
       -- player tokens
-      tokens = List.map (\p -> playerToken p.color |> GCol.move (b2c p.position)) board.players
-  in GCol.group <| pieces ++ homes ++ tokens
+      tokens = List.map (\p -> playerToken p.color |> GCol.move (b2c p.position)) (List.reverse board.players)
+  in GCol.group <| pieces ++ homes ++ tokens ++ treasures
 
 -- * Interface rendering
 
-gameTable : Board -> GEl.Element
-gameTable board = 
+-- CSS to make element unselectable
+unselectable : Html.Attribute
+unselectable = Html.style
+  [ ("-webkit-touch-callout", "none")
+  , ("-webkit-user-select", "none")
+  , ("-khtml-user-select", "none")
+  , ("-moz-user-select", "none")
+  , ("-ms-user-select", "none")
+  , ("user-select", "none")
+  ]
+
+makeUnselectable : GEl.Element -> GEl.Element
+makeUnselectable el =
+  let (w,h) = GEl.sizeOf el
+  in Html.div [ unselectable ] [ Html.fromElement el ] |> Html.toElement w h
+
+viewPlayerList : List Player -> GEl.Element
+viewPlayerList players = 
+  let displayCurPlayer p = GEl.flow GEl.down 
+        [ Text.leftAligned <| Text.fromString <| p.name ++ " (" ++ toString (List.length p.targets) ++ " remaining)" 
+        , case p.targets of
+            [] -> Text.plainText "All targets reached, return to base!"
+            (x::_) -> Text.fromString "Next target is: " ++ Text.color Color.white (Text.fromString x)
+              |> Text.leftAligned
+        ] |> colorIndicator p.color
+      displayNextPlayer i p = toString i ++ ". " ++ p.name ++ " (" ++ toString (List.length p.targets) ++ " remaining)"
+        |> Text.plainText |> colorIndicator p.color
+      colorIndicator color el = 
+        let h = snd (GEl.sizeOf el)
+        in GCol.collage 20 h [GCol.rect 10 (toFloat h * 0.9) |> GCol.filled color]
+          `GEl.beside` el
+      headingCur = Text.centered <| Text.bold <| Text.fromString "Current Player:"
+      headingNext = Text.centered <| Text.bold <| Text.fromString "Next Players:"
+      nextPlayers = GEl.flow GEl.down <| List.map2 displayNextPlayer [2..4] (List.tail players)
+  in GEl.flow GEl.down 
+    [ headingCur
+    , displayCurPlayer (List.head players)
+    , headingNext
+    , nextPlayers
+    ]
+
+viewFreePiece : Piece -> GEl.Element
+viewFreePiece piece = 
+  let rotateCCWButton = shiftButtonArrow East
+        |> GInp.clickable (Signal.send freeRotateChannel CCW)
+      rotateCWButton = shiftButtonArrow West
+        |> GInp.clickable (Signal.send freeRotateChannel CW)
+      controls = GEl.flow GEl.right 
+        [ rotateCCWButton
+        , GCol.collage pieceSize pieceSize [renderPiece piece]
+        , rotateCWButton ]
+      heading = Text.centered <| Text.bold <| Text.fromString "Piece to shift in:"
+  in heading `GEl.above` controls
+
+viewInGame : TurnState -> Board -> GEl.Element
+viewInGame turnState board = 
   let -- where should the shift buttons be places
       shiftButtonSpec = 
         [ (North, movableCols board )
@@ -269,13 +354,40 @@ gameTable board =
       shiftButtons = List.concatMap (\(s,is) -> List.map (mkButton s) is) shiftButtonSpec
       -- size in pixels of the board
       bsize = boardRealSize board
+
+      turnStateInfo = case turnState of
+        Shifting -> Text.plainText "Please shift a row or column. You may rotate the free piece with the buttons above."
+        Moving -> Text.plainText "Move your token with the arrow keys. Press 'Enter' when you want to finish your move."
       -- game board
       boardElement = [renderBoard board] ++ shiftButtons
         |> GCol.collage (bsize.width+pieceSize*2) (bsize.height+pieceSize*2)
       infoElement = GEl.flow GEl.down
-        [ [renderPiece board.freePiece] |> GCol.collage pieceSize pieceSize
+        [ viewPlayerList board.players
+        , viewFreePiece board.freePiece
+        , turnStateInfo
         ]
-  in boardElement `GEl.beside` infoElement
+      content = makeUnselectable boardElement `GEl.beside` infoElement
+    in content
+
+viewAskPlayerNames : List GInp.Content -> GEl.Element
+viewAskPlayerNames contents = 
+  let mkField idx chan content = GInp.field GInp.defaultStyle (Signal.send chan) ("Player " ++ toString idx) content
+      fields = GEl.flow GEl.right (List.map3 mkField [1..4] playerNameChannels contents )
+  in GEl.flow GEl.down 
+    [ Text.plainText "Participating Players:"
+    , fields
+    , GInp.button (Signal.send startGameChannel ()) "Start Game"
+    ]
+
+viewGameOver : Player -> GEl.Element
+viewGameOver winner = Text.fromString winner.name ++ Text.fromString " has won!"
+  |> Text.centered
+
+viewMain : Scene -> GEl.Element
+viewMain scene = case scene of 
+  AskPlayerNames ps -> viewAskPlayerNames ps
+  InGame turnState board -> viewInGame turnState board
+  GameOver winner -> viewGameOver winner
 
 -- * Specific game rules (fixed size and limited number of players)
 
@@ -371,6 +483,9 @@ nextPlayer board = let (p::ps) = board.players
 currentPlayer : Board -> Player
 currentPlayer board = List.head board.players
 
+hasWon : Player -> Bool
+hasWon player = player.targets == [] && player.position == player.home
+
 updateCurrentPlayer : Player -> Board -> Board
 updateCurrentPlayer newpl board =
   let (_::ps) = board.players
@@ -396,11 +511,16 @@ moveTo side board =
     then updateCurrentPlayer updplayer board
     else board
 
--- | Checks if the current player is currently above the target
-foundTarget : Board -> Bool
-foundTarget board = case Dict.get (currentPlayer board).position board.pieces of
-  Just p -> p.treasure == Just (List.head (currentPlayer board).targets)
-  Nothing -> False
+processTarget : Board -> Board
+processTarget board =
+  let curPlayer = currentPlayer board
+  in case Dict.get curPlayer.position board.pieces of
+      Just curPiece -> case (currentPlayer board).targets of
+        [] -> board
+        (curTarget::rest) -> if curPiece.treasure == Just curTarget
+          then updateCurrentPlayer { curPlayer | targets <- rest } board
+          else board
+      Nothing -> board
 
 shift : Shift -> Board -> Board
 shift shiftCmd board = 
@@ -422,9 +542,9 @@ shift shiftCmd board =
       shiftedIn  = shiftEdgePos shiftDir
 
       -- Partition pieces by which get shifted and which stay in place
-      shifted (x,y) _ = if isHorizontal shiftCmd.side
+      shifted (x,y) = if isHorizontal shiftCmd.side
         then y == shiftCmd.index else x == shiftCmd.index
-      (removed,rest) = Dict.partition shifted board.pieces
+      (removed,rest) = Dict.partition (\pos _ -> shifted pos) board.pieces
       -- Insert shifted
       doShift pos dict = if pos == shiftedOut
         then dict else Dict.insert (pos `to` shiftDir) (unsafeGet pos removed) dict
@@ -432,8 +552,12 @@ shift shiftCmd board =
         |> Dict.insert shiftedIn board.freePiece -- insert new piece
       -- piece that has fallen out
       newFree = unsafeGet shiftedOut removed
+
+      relocateToken player = if shifted player.position
+        then { player | position <- if player.position == shiftedOut then shiftedIn else player.position `to` shiftDir }
+        else player
       -- TODO: Take care of player figures
-  in { board | pieces <- newBoard, freePiece <- newFree }
+  in { board | pieces <- newBoard, freePiece <- newFree, players <- List.map relocateToken board.players }
 
 
 
@@ -443,17 +567,90 @@ shift shiftCmd board =
 shiftChannel : Signal.Channel Shift
 shiftChannel = Signal.channel { side = North, index = -1 }
 
-testGame : Signal Shift -> Signal Board
-testGame shiftSig = 
-  let initial = fst (newGame (Random.initialSeed 42) ["John", "Max", "Hinz"])
-      do shiftCmd board = shift shiftCmd board
-  in Signal.foldp do initial shiftSig
+-- | Channel for the buttons to rotate the free piece
+freeRotateChannel : Signal.Channel AngularDir
+freeRotateChannel = Signal.channel CW
 
+-- | Receiving events from the "start game" button
+startGameChannel : Signal.Channel ()
+startGameChannel = Signal.channel ()
+
+-- | Receiving events from the player name widget
+playerNameChannels : List (Signal.Channel GInp.Content)
+playerNameChannels = List.map (\f -> Signal.channel GInp.noContent) playerColors
+
+moveCommands : Signal Orientation
+moveCommands = Signal.mergeMany
+  [ always North <~ keyPresses keyArrowUp
+  , always South <~ keyPresses keyArrowDown
+  , always West  <~ keyPresses keyArrowLeft
+  , always East  <~ keyPresses keyArrowRight
+  ]
+
+-- | Subscribe a list of channels and get a signal of lists.
+subscribeMany : List (Signal.Channel a) -> Signal (List a)
+subscribeMany chs = case chs of
+  [] -> Signal.constant []
+  (x::xs) -> (::) <~ Signal.subscribe x ~ subscribeMany xs
+
+-- | Collect all user events
+collectEvents : Signal UserEvent
+collectEvents = Signal.mergeMany
+  [ (StartGame << fst) <~ Time.timestamp (Signal.subscribe startGameChannel)
+  , UpdatePlayerNames <~ subscribeMany playerNameChannels
+  , RotateFreePiece <~ Signal.subscribe freeRotateChannel
+  , ShiftRow <~ Signal.subscribe shiftChannel
+  , MoveToken <~ moveCommands
+  , always EndTurn <~ keyPresses keyEnter
+  ]
+
+-- | Central state handling function.
+stepGame : UserEvent -> Scene -> Scene
+stepGame event scene = case scene of
+  AskPlayerNames ps -> case event of
+    UpdatePlayerNames ps' -> AskPlayerNames ps'
+    StartGame t -> 
+      let players = List.filterMap (\c -> if String.length c.string > 0 then Just c.string else Nothing) ps
+      in if List.length players >= 2 
+        then newGame (Time.inMilliseconds t |> floor |> Random.initialSeed) players
+          |> fst |> InGame Shifting
+        else AskPlayerNames ps
+    _ -> scene
+  InGame turnState board -> case turnState of
+    Shifting -> case event of
+      RotateFreePiece dir -> InGame Shifting (rotateFreePiece dir board)
+      ShiftRow cmd -> InGame Moving (shift cmd board)
+      _ -> scene
+    Moving -> case event of
+      MoveToken dir -> InGame Moving (moveTo dir board)
+      EndTurn -> 
+        let afterTargetCheck = processTarget board
+        in if hasWon (currentPlayer afterTargetCheck) 
+          then GameOver (currentPlayer afterTargetCheck)
+          else InGame Shifting (nextPlayer afterTargetCheck)
+        -- TODO: Check targets, check winning condition
+      _ -> scene
+  _ -> scene
+
+-- | Takes user events and produces a scene to display.
+runGame : Signal UserEvent -> Signal Scene
+runGame = Signal.foldp stepGame (AskPlayerNames (List.repeat 4 GInp.noContent))
+
+-- | Glue everything together.
 main : Signal GEl.Element
-main = gameTable <~ testGame (Signal.subscribe shiftChannel)
+main = viewMain <~ runGame collectEvents
 
 
 -- * Utility functions
+
+keyArrowUp = 38 
+keyArrowDown = 40
+keyArrowLeft = 37
+keyArrowRight = 39
+keyEnter = 13
+
+keyPresses : Keyboard.KeyCode -> Signal ()
+keyPresses key = always () <~ Signal.keepIf identity False (Keyboard.isDown key)
 
 roundedRect : Float -> Float -> Float -> (GCol.Shape -> GCol.Form) -> GCol.Form
 roundedRect w h radius style = GCol.group
