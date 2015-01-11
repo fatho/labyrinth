@@ -19,7 +19,9 @@ import Signal
 import Signal ((<~),(~), Signal)
 import Random
 import Random.Array as RndArr
+-- Workaround, same as above
 import Text
+import Text (defaultStyle)
 import Time (..)
 import Window
 
@@ -60,7 +62,7 @@ type alias Player =
   -- ^ the treasures this player has to find in that order.
   }
 
-type Orientation = Top | Right | Bottom | Left
+type Orientation = North | East | South | West
 
 type AngularDir = CW | CCW
 
@@ -84,10 +86,10 @@ rotate dir blk = case dir of
 -- | Rotates a piece s.t. the current top points in the direction given by Orientation.
 rotateTo : Orientation -> Piece -> Piece
 rotateTo o p = case o of
-  Top -> p 
-  Right -> rotate CW p
-  Bottom -> rotate CW <| rotate CW p
-  Left -> rotate CCW p
+  North -> p 
+  East -> rotate CW p
+  South -> rotate CW <| rotate CW p
+  West -> rotate CCW p
 
 -- | Rotates a piece to a random direction.
 rotateRandom : Piece -> Random.Seed -> (Piece, Random.Seed)
@@ -97,16 +99,42 @@ rotateRandom p seed = let (o,s) = Random.generate orientationGen seed
 -- | Random generator for Orientation values.
 orientationGen : Random.Generator Orientation
 orientationGen = 
-  let orientations = Array.fromList [Top, Right, Bottom, Left]
-      gen seed = let (x,s) = RndArr.sample seed orientations in (Maybe.withDefault Top x, s)
+  let orientations = Array.fromList [North, East, South, West]
+      gen seed = let (x,s) = RndArr.sample seed orientations in (Maybe.withDefault North x, s)
   in Random.customGenerator gen
 
 orientationAngle : Orientation -> Float
 orientationAngle o = case o of
-  Top -> 0
-  Right -> degrees 90
-  Bottom -> degrees 180
-  Left -> degrees 270
+  North -> 0
+  East -> degrees 90
+  South -> degrees 180
+  West -> degrees 270
+
+isOpenOn : Piece -> Orientation -> Bool  
+isOpenOn piece dir = case dir of
+  North -> piece.top
+  West -> piece.left
+  East -> piece.right
+  South -> piece.bottom
+
+opposite : Orientation -> Orientation
+opposite o = case o of
+  West -> East
+  East -> West
+  North -> South
+  South -> North
+
+isHorizontal : Orientation -> Bool
+isHorizontal o = o == West || o == East
+isVertical : Orientation -> Bool
+isVertical = not << isHorizontal
+
+to : Coord -> Orientation -> Coord
+to (x,y) dir = case dir of
+  West -> (x-1,y)
+  North -> (x,y-1)
+  East -> (x+1,y)
+  South -> (x,y+1)
 
 -- * All piece types modulo rotation
 
@@ -135,12 +163,15 @@ pieceSize = 3 * smallSize
 -- | Size of the labyrinth
 boardRealSize board = { width = board.width * pieceSize, height = board.height * pieceSize }
 
--- | Currently, treasures are rendered as colored text
+-- | Currently, treasures are rendered as text
 renderTreasure : Treasure -> GCol.Form
-renderTreasure t = Text.fromString t
-  |> (let s = Text.defaultStyle in Text.style { s | color <- Color.lightGrey })
-  |> Text.centered
-  |> GCol.toForm
+renderTreasure t = List.map 
+  (\off -> Text.fromString t
+    |> Text.style { defaultStyle | color <- Color.black, bold <- True }
+    |> Text.centered |> GCol.toForm |> GCol.move off
+  ) [(1,1),(1,-1),(-1,1),(-1,-1)] ++ [Text.fromString t
+    |> Text.style { defaultStyle | color <- Color.lightGrey, bold <- True }
+    |> Text.centered |> GCol.toForm] |> GCol.group
 
 -- | Draws a piece to a form. The origin is at the center of the piece.
 renderPiece : Piece -> GCol.Form
@@ -218,16 +249,16 @@ renderBoard board =
 gameTable : Board -> GEl.Element
 gameTable board = 
   let shiftButtonSpec = 
-        [ (Top, movableCols board )
-        , (Bottom, movableCols board)
-        , (Left, movableRows board)
-        , (Right, movableRows board) ]
+        [ (North, movableCols board )
+        , (South, movableCols board)
+        , (West, movableRows board)
+        , (East, movableRows board) ]
 
       buttonPos side idx = case side of
-        Left -> boardToCanvas board (-1, idx)
-        Right -> boardToCanvas board (board.width, idx)
-        Top -> boardToCanvas board (idx, -1)
-        Bottom -> boardToCanvas board (idx, board.height)
+        West -> boardToCanvas board (-1, idx)
+        East -> boardToCanvas board (board.width, idx)
+        North -> boardToCanvas board (idx, -1)
+        South -> boardToCanvas board (idx, board.height)
 
       mkButton side idx = shiftButtonArrow side
         |> GInp.clickable (Signal.send shiftChannel { side = side, index = idx} )
@@ -288,24 +319,24 @@ newGame seed playerNames =
 -- | Fixated pieces on the board, row major.
 initialPieces : List (List Piece)
 initialPieces = 
-  [[ curve Right Nothing, tjunction Bottom (Just "Book"), tjunction Bottom (Just "Coin Purse"), curve Bottom Nothing ]
-  ,[ tjunction Right (Just "Map"), tjunction Right (Just "Crown"), tjunction Bottom (Just "Keys"), tjunction Left (Just "Skull")]
-  ,[ tjunction Right (Just "Ring"), tjunction Top (Just "Chest"), tjunction Left (Just "Emerald"), tjunction Left (Just "Sword")]
-  ,[ curve Top Nothing, tjunction Top (Just "Chandelier"), tjunction Top (Just "Helmet"), curve Left Nothing ]]
+  [[ curve East Nothing, tjunction South (Just "Book"), tjunction South (Just "Coin Purse"), curve South Nothing ]
+  ,[ tjunction East (Just "Map"), tjunction East (Just "Crown"), tjunction South (Just "Keys"), tjunction West (Just "Skull")]
+  ,[ tjunction East (Just "Ring"), tjunction North (Just "Chest"), tjunction West (Just "Emerald"), tjunction West (Just "Sword")]
+  ,[ curve North Nothing, tjunction North (Just "Chandelier"), tjunction North (Just "Helmet"), curve West Nothing ]]
 
 -- | List of loose pieces in the game.
 loosePieces : List Piece
 loosePieces = List.concat
-  [[ curve Top Nothing, tjunction Top (Just "Fairy"), straight Top Nothing ]
-  ,[ curve Top (Just "Salamander"), tjunction Top (Just "Ghost"), straight Top Nothing
-   , straight Top Nothing, curve Top Nothing, curve Top Nothing, straight Top Nothing]
-  ,[ curve Top Nothing, straight Top Nothing, straight Top Nothing]
-  ,[ curve Top Nothing, straight Top Nothing, curve Top Nothing, curve Top Nothing, straight Top Nothing
-   , tjunction Top (Just "Halfling"), straight Top Nothing]
-  ,[ curve Top Nothing, curve Top Nothing, curve Top Nothing ]
-  ,[ straight Top Nothing, curve Top (Just "Moth"), straight Top Nothing, tjunction Top (Just "Djinn"), tjunction Top (Just "Bat")
-   , tjunction Top (Just "Dragon"), curve Top (Just "Spider")]
-  ,[ straight Top Nothing, curve Top (Just "Owl"), curve Top (Just "Rat"), curve Top (Just "Scarab")] ]
+  [[ curve North Nothing, tjunction North (Just "Fairy"), straight North Nothing ]
+  ,[ curve North (Just "Salamander"), tjunction North (Just "Ghost"), straight North Nothing
+   , straight North Nothing, curve North Nothing, curve North Nothing, straight North Nothing]
+  ,[ curve North Nothing, straight North Nothing, straight North Nothing]
+  ,[ curve North Nothing, straight North Nothing, curve North Nothing, curve North Nothing, straight North Nothing
+   , tjunction North (Just "Halfling"), straight North Nothing]
+  ,[ curve North Nothing, curve North Nothing, curve North Nothing ]
+  ,[ straight North Nothing, curve North (Just "Moth"), straight North Nothing, tjunction North (Just "Djinn"), tjunction North (Just "Bat")
+   , tjunction North (Just "Dragon"), curve North (Just "Spider")]
+  ,[ straight North Nothing, curve North (Just "Owl"), curve North (Just "Rat"), curve North (Just "Scarab")] ]
 
 -- | A list of all treasures
 allTreasures : Array.Array Treasure
@@ -334,17 +365,60 @@ nextPlayer board = let (p::ps) = board.players
 currentPlayer : Board -> Player
 currentPlayer board = List.head board.players
 
+updateCurrentPlayer : Player -> Board -> Board
+updateCurrentPlayer newpl board =
+  let (_::ps) = board.players
+  in { board | players <- newpl::ps }
+
 -- | Rotates the free piece.
 rotateFreePiece : AngularDir -> Board -> Board
 rotateFreePiece rot board = { board | freePiece <- rotate rot board.freePiece }
+
+-- | Moves the current player's token.
+moveTo : Orientation -> Board -> Board
+moveTo side board = 
+  let player      = currentPlayer board
+      updplayer   = { player | position <- player.position `to` side }
+      playerPiece = Dict.get player.position board.pieces
+      adjacentPiece = Dict.get (player.position `to` side) board.pieces
+
+      canMove = case (playerPiece, adjacentPiece) of
+        (Just p, Just a) -> (p `isOpenOn` side) &&  (a `isOpenOn` opposite side)
+        _ -> False
+
+  in if canMove
+    then updateCurrentPlayer updplayer board
+    else board
+
+-- | Checks if the current player is currently above the target
+foundTarget : Board -> Bool
+foundTarget board = case Dict.get (currentPlayer board).position board.pieces of
+  Just p -> p.treasure == Just (List.head (currentPlayer board).targets)
+  Nothing -> False
+
+shift : Shift -> Board -> Board
+shift shift board = 
+  let shiftCoords = if isHorizontal shift.side 
+        then List.map (\i -> (i, shift.index)) [0..board.width-1]
+        else List.map (\i -> (shift.index, i)) [0..board.width-1]
+      shiftDir = opposite side
+      -- Partition pieces by which get shifted and which stay in place
+      shifted (x,y) = if isHorizontal
+        then y == shift.index else x == shift.index
+      (removed,rest) = Dict.partition shifted board.pieces
+      -- Insert shifted
+      newBoard = List.foldl (\pos -> Dict.insert (pos `to` shiftDir))
+
+
 
 -- * Interactivity
 
 -- | Channel for the buttons to shift a piece in
 shiftChannel : Signal.Channel Shift
-shiftChannel = Signal.channel { side = Top, index = -1 }
+shiftChannel = Signal.channel { side = North, index = -1 }
 
 testGame = fst (newGame (Random.initialSeed 42) ["John", "Max", "Hinz"])
+  |> moveTo South
 
 main : Signal GEl.Element
 main = (\shift -> gameTable testGame) <~ Signal.subscribe shiftChannel
@@ -380,3 +454,16 @@ mapAccumL f acc xxs = case xxs of
 
 singleton : a -> List a
 singleton x = [x]
+
+last : List a -> a
+last = List.reverse >> List.head
+
+init : List a -> List a
+init xs = case xs of 
+  [] -> List.tail []
+  [x] -> []
+  (x::xs) -> x :: init xs
+
+-- | When you know there must be an element.
+getUnsafe : comparable -> Dict.Dict comparable v -> v
+getUnsafe key = Dict.get key >> maybeToList >> List.head
