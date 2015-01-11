@@ -397,17 +397,18 @@ foundTarget board = case Dict.get (currentPlayer board).position board.pieces of
   Nothing -> False
 
 shift : Shift -> Board -> Board
-shift shift board = 
-  let shiftCoords = if isHorizontal shift.side 
-        then List.map (\i -> (i, shift.index)) [0..board.width-1]
-        else List.map (\i -> (shift.index, i)) [0..board.width-1]
-      shiftDir = opposite side
+shift shiftCmd board = 
+  let shiftCoords = if isHorizontal shiftCmd.side 
+        then List.map (\i -> (i, shiftCmd.index)) [0..board.width-1]
+        else List.map (\i -> (shiftCmd.index, i)) [0..board.width-1]
+      shiftDir = opposite shiftCmd.side
       -- Partition pieces by which get shifted and which stay in place
-      shifted (x,y) = if isHorizontal
-        then y == shift.index else x == shift.index
+      shifted (x,y) _ = if isHorizontal shiftCmd.side
+        then y == shiftCmd.index else x == shiftCmd.index
       (removed,rest) = Dict.partition shifted board.pieces
       -- Insert shifted
-      newBoard = List.foldl (\pos -> Dict.insert (pos `to` shiftDir))
+      newBoard = newBoard --List.foldl (\pos -> Dict.insert (pos `to` shiftDir)) rest
+  in shift shiftCmd board
 
 
 
