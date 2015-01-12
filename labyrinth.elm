@@ -89,6 +89,7 @@ type UserEvent
   | EndTurn
   | RestartWithSamePlayers Time.Time
   | RestartWithNewPlayers
+  | ShiftAnimation Time.Time
 
 -- | Defines possible application outputs.
 type Scene
@@ -97,7 +98,8 @@ type Scene
   | GameOver (List Player)
 
 type TurnState
-  = Shifting
+  = WaitForShift
+  | Shifting Shift Float
   | Moving
 
 -- | A shift action is characterized by the side where the new piece 
@@ -259,31 +261,59 @@ shiftButtonArrow side color =
     |> singleton |> GCol.collage pieceSize pieceSize
 
 -- | Renders the board.
-renderBoard : Board -> GCol.Form
-renderBoard board = 
+renderBoard : Maybe (Shift, Float) -> Board -> GCol.Form
+renderBoard shiftProgress board = 
   let b2c = boardToCanvas board
       -- render ground of cell
       renderGroundAt pos = case Dict.get pos board.pieces of
         Nothing -> []
-        Just piece -> [renderPiece piece |> GCol.move (b2c pos)]
+        Just piece -> [renderPiece piece 
+          |> GCol.move (b2c pos) |> shiftAnim pos ]
       -- render treasure of cell
       renderTreasureAt pos = case Dict.get pos board.pieces of
         Nothing -> []
         Just piece -> piece.treasure 
           `andThen` (\tr -> if Set.member tr board.collectedTreasures then Nothing else Just tr)
             |> Maybe.map renderTreasure 
-            |> Maybe.map (GCol.move (b2c pos))
+            |> Maybe.map (GCol.move (b2c pos) >> shiftAnim pos)
             |> maybeToList
+
+      freePieceAnimated = GCol.group (renderPiece board.freePiece 
+            :: maybeToList (Maybe.map renderTreasure board.freePiece.treasure)
+          ) |> GCol.move (b2c freePiecePos)
+            |> shiftAnim freePiecePos
+
+      freePiecePos = case shiftCmd.side of
+        South -> (shiftCmd.index, board.height)
+        North -> (shiftCmd.index, -1)
+        East -> (board.width, shiftCmd.index)
+        West -> (-1, shiftCmd.index)
+
+      -- Check if a coordinate is part of the shifting animation
+      isShifted (x,y) = (isHorizontal shiftCmd.side && shiftCmd.index == y)
+        || (isVertical shiftCmd.side && shiftCmd.index == x)
+      shiftOff = case shiftCmd.side of
+        North -> (0, -shiftFactor * pieceSize)
+        South -> (0,  shiftFactor * pieceSize)
+        East -> (-shiftFactor * pieceSize, 0)
+        West -> (shiftFactor * pieceSize, 0)
+
+      shiftAnim pos = GCol.move <| if isShifted pos then shiftOff else (0,0)
+      shiftCmd = Maybe.withDefault { side = North, index = -1 } <| Maybe.map fst shiftProgress
+      shiftFactor = Maybe.withDefault 0 <| Maybe.map snd shiftProgress
+
+      isShiftAnimation = shiftProgress /= Nothing
       -- rendered pieces
-      pieces = (,) `List.map` [0..board.width-1] `ap` [0..board.height-1]
-        |> List.concatMap renderGroundAt
+      pieces = (if isShiftAnimation then [freePieceAnimated] else [])
+        ++ ( (,) `List.map` [0..board.width-1] `ap` [0..board.height-1]
+              |> List.concatMap renderGroundAt )
       -- rendered treasures
       treasures = (,) `List.map` [0..board.width-1] `ap` [0..board.height-1]
         |> List.concatMap renderTreasureAt
       -- player bases
       homes = List.map (\p -> renderHome p.color |> GCol.move (b2c p.home)) board.players
       -- player tokens
-      tokens = List.map (\p -> playerToken p.color |> GCol.move (b2c p.position)) (List.reverse board.players)
+      tokens = List.map (\p -> playerToken p.color |> GCol.move (b2c p.position) |> shiftAnim p.position) (List.reverse board.players)
   in GCol.group <| pieces ++ homes ++ tokens ++ treasures
 
 -- * Interface rendering
@@ -334,17 +364,30 @@ viewPlayerList players =
     ]
 
 -- | Displays the free piece and buttons to rotate it.
-viewFreePiece : Piece -> GEl.Element
-viewFreePiece piece = 
-  let rotateCCWButton = shiftButtonArrow East Color.blue
-        |> GInp.clickable (Signal.send freeRotateChannel CCW)
-      rotateCWButton = shiftButtonArrow West Color.blue
-        |> GInp.clickable (Signal.send freeRotateChannel CW)
+viewFreePiece : TurnState -> Piece -> GEl.Element
+viewFreePiece turnState piece = 
+  let rotateCCWButton = if isShiftState
+        then shiftButtonArrow East Color.yellow
+          |> GInp.clickable (Signal.send freeRotateChannel CCW)
+        else shiftButtonArrow East Color.grey
+      rotateCWButton = if isShiftState
+        then shiftButtonArrow West Color.yellow
+          |> GInp.clickable (Signal.send freeRotateChannel CW)
+        else shiftButtonArrow West Color.grey
+
+      isShiftState = turnState == WaitForShift
+      isShifting = case turnState of
+        Shifting _ _ -> True
+        _ -> False
+
       controls = GEl.flow GEl.right 
         [ rotateCCWButton
-        , GCol.collage pieceSize pieceSize 
-            [ renderPiece piece
-            , Maybe.map renderTreasure piece.treasure |> maybeToList |> GCol.group]
+        , if isShifting 
+            then GEl.spacer pieceSize pieceSize
+            else GCol.collage pieceSize pieceSize 
+                  [ renderPiece piece
+                  , Maybe.map renderTreasure piece.treasure 
+                    |> maybeToList |> GCol.group ]
         , rotateCWButton ]
   in controls
 
@@ -365,7 +408,7 @@ viewInGame turnState board =
         South -> boardToCanvas board (idx, board.height)
       -- creates a clickable button
       mkButton side idx = 
-        ( if Just { side = opposite side, index = idx } == board.lastShift
+        ( if Just { side = opposite side, index = idx } == board.lastShift || turnState /= WaitForShift
             then shiftButtonArrow side Color.grey
             else shiftButtonArrow side Color.yellow
              |> GInp.clickable (Signal.send shiftChannel { side = side, index = idx} )
@@ -377,10 +420,14 @@ viewInGame turnState board =
       bsize = boardRealSize board
 
       turnStateInfo = case turnState of
-        Shifting -> Text.plainText "Please shift a row or column. You may rotate the free piece with the buttons above."
+        WaitForShift -> Text.plainText "Please shift a row or column. You may rotate the free piece with the buttons above."
+        Shifting _ _ -> Text.plainText "Shifting..."
         Moving -> Text.plainText "Move your token with the arrow keys. Press 'Enter' when you want to finish your move."
       -- game board
-      boardElement = [renderBoard board] ++ shiftButtons
+      shiftProgress = case turnState of
+        Shifting cmd p -> Just (cmd, p)
+        _ -> Nothing
+      boardElement = [renderBoard shiftProgress board] ++ shiftButtons
         |> GCol.collage (bsize.width+pieceSize*2) (bsize.height+pieceSize*2)
 
       infoElement = GEl.flow GEl.down
@@ -395,7 +442,7 @@ viewInGame turnState board =
             |> Text.bold
             |> Text.height 20
             |> Text.leftAligned
-        , viewFreePiece board.freePiece
+        , viewFreePiece turnState board.freePiece
         , GEl.spacer 0 100
         , Text.fromString "Instructions"
             |> Text.bold
@@ -698,6 +745,7 @@ collectEvents = Signal.mergeMany
   , always EndTurn <~ keyPresses keyEnter
   , always RestartWithNewPlayers <~ Signal.subscribe restartNewChannel
   , (RestartWithSamePlayers << fst) <~ Time.timestamp (Signal.subscribe restartSameChannel)
+  , ShiftAnimation <~ Time.fps 30
   ]
 
 -- | Central state handling function.
@@ -709,27 +757,33 @@ stepGame event scene = case scene of
       let players = List.filterMap (\c -> if String.length c.string > 0 then Just c.string else Nothing) ps
       in if List.length players >= 2 
         then newGame (Time.inMilliseconds t |> floor |> Random.initialSeed) players
-          |> fst |> InGame Shifting
+          |> fst |> InGame WaitForShift
         else AskPlayerNames ps
     _ -> scene
   InGame turnState board -> case turnState of
-    Shifting -> case event of
-      RotateFreePiece dir -> InGame Shifting (rotateFreePiece dir board)
-      ShiftRow cmd -> InGame Moving (shift cmd board)
+    WaitForShift -> case event of
+      RotateFreePiece dir -> InGame WaitForShift (rotateFreePiece dir board)
+      ShiftRow cmd -> InGame (Shifting cmd 0) board
+        --
       _ -> scene
+    Shifting cmd progress -> case event of
+      ShiftAnimation delta -> let progress' = progress + Time.inSeconds delta
+        in if progress' >= 1
+            then InGame Moving (shift cmd board)
+            else InGame (Shifting cmd progress') board
     Moving -> case event of
       MoveToken dir -> InGame Moving (moveTo dir board)
       EndTurn -> 
         let afterTargetCheck = processTarget board
         in if hasWon (currentPlayer afterTargetCheck) 
           then GameOver (List.sortBy rank afterTargetCheck.players)
-          else InGame Shifting (nextPlayer afterTargetCheck)
+          else InGame WaitForShift (nextPlayer afterTargetCheck)
         -- TODO: Check targets, check winning condition
       _ -> scene
   GameOver players -> case event of
     RestartWithSamePlayers time -> newGame 
       (Time.inMilliseconds time |> floor |> Random.initialSeed) 
-      (List.map (\p -> p.name) players) |> fst |> InGame Shifting
+      (List.map (\p -> p.name) players) |> fst |> InGame WaitForShift
     RestartWithNewPlayers -> initialState 
     _ -> GameOver players
 
@@ -746,6 +800,7 @@ testGameOverState = GameOver <| List.sortBy rank
 -- | Takes user events and produces a scene to display.
 runGame : Signal UserEvent -> Signal Scene
 runGame = Signal.foldp stepGame initialState
+  >> Signal.dropRepeats
 
 -- | Glue everything together.
 main : Signal GEl.Element
