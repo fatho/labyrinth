@@ -420,9 +420,16 @@ viewInGame turnState board =
       bsize = boardRealSize board
 
       turnStateInfo = case turnState of
-        WaitForShift -> Text.plainText "Please shift a row or column. You may rotate the free piece with the buttons above."
+        WaitForShift -> Text.plainText
+          <| "Your current target is displayed in white and can be\n"
+          ++ "revealed by selecting that part of the page. Make\n"
+          ++ "sure the other players don't see it.\n"
+          ++ "Now shift a row or column.\n"
+          ++ "You may rotate the free piece with the buttons above."
         Shifting _ _ -> Text.plainText "Shifting..."
-        Moving -> Text.plainText "Move your token with the arrow keys. Press 'Enter' when you want to finish your move."
+        Moving -> Text.plainText 
+          <| "Move your token with the arrow keys.\n" 
+          ++ "Press 'Enter' when you want to finish your move."
       -- game board
       shiftProgress = case turnState of
         Shifting cmd p -> Just (cmd, p)
