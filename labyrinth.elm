@@ -18,6 +18,7 @@ import Maybe (Maybe (..), andThen)
 import Maybe
 import Mouse
 import Keyboard
+import Set
 import Signal
 import Signal ((<~),(~), Signal)
 import String
@@ -48,9 +49,17 @@ type alias Coord = (Int, Int)
 type alias Board = 
   { width     : Int
   , height    : Int
+  -- ^ size of the board
   , pieces    : Dict.Dict Coord Piece
+  -- ^ pieces on the board
   , freePiece : Piece
+  -- ^ piece used for shifting
   , players   : List Player
+  -- ^ participating players
+  , lastShift : Maybe Shift
+  -- ^ the last shift that was performed
+  , collectedTreasures : Set.Set Treasure
+  -- ^ set of treasures already collected
   }
 
 type alias Player =
@@ -78,13 +87,14 @@ type UserEvent
   | ShiftRow Shift
   | MoveToken Orientation
   | EndTurn
-  | Exit
+  | RestartWithSamePlayers Time.Time
+  | RestartWithNewPlayers
 
 -- | Defines possible application outputs.
 type Scene
   = AskPlayerNames (List GInp.Content)
   | InGame TurnState Board
-  | GameOver Player
+  | GameOver (List Player)
 
 type TurnState
   = Shifting
@@ -127,6 +137,7 @@ orientationGen =
       gen seed = let (x,s) = RndArr.sample seed orientations in (Maybe.withDefault North x, s)
   in Random.customGenerator gen
 
+-- | Converts an Orientation value to clockwise radians. 0 is up.
 orientationAngle : Orientation -> Float
 orientationAngle o = case o of
   North -> 0
@@ -134,6 +145,7 @@ orientationAngle o = case o of
   South -> degrees 180
   West -> degrees 270
 
+-- | Checks if the piece is open on the given side.
 isOpenOn : Piece -> Orientation -> Bool  
 isOpenOn piece dir = case dir of
   North -> piece.top
@@ -141,6 +153,7 @@ isOpenOn piece dir = case dir of
   East -> piece.right
   South -> piece.bottom
 
+-- | Returns the opposite side of a given Orientation value.
 opposite : Orientation -> Orientation
 opposite o = case o of
   West -> East
@@ -153,6 +166,7 @@ isHorizontal o = o == West || o == East
 isVertical : Orientation -> Bool
 isVertical = not << isHorizontal
 
+-- | Offsets a coordinate by one in the given direction.
 to : Coord -> Orientation -> Coord
 to (x,y) dir = case dir of
   West -> (x-1,y)
@@ -189,13 +203,9 @@ boardRealSize board = { width = board.width * pieceSize, height = board.height *
 
 -- | Currently, treasures are rendered as text
 renderTreasure : Treasure -> GCol.Form
-renderTreasure t = List.map 
-  (\off -> Text.fromString t
-    |> Text.style { defaultStyle | color <- Color.black, bold <- True }
-    |> Text.centered |> GCol.toForm |> GCol.move off
-  ) [(1,1),(1,-1),(-1,1),(-1,-1)] ++ [Text.fromString t
+renderTreasure t = Text.fromString t
     |> Text.style { defaultStyle | color <- Color.lightGrey, bold <- True }
-    |> Text.centered |> GCol.toForm] |> GCol.group
+    |> Text.centered |> GCol.toForm
 
 -- | Draws a piece to a form. The origin is at the center of the piece.
 renderPiece : Piece -> GCol.Form
@@ -240,10 +250,10 @@ playerToken col =
     |> GCol.rotate (degrees 45)
 
 -- | The shift button arrow, pointing inwards from the side where it resides.
-shiftButtonArrow : Orientation -> GEl.Element
-shiftButtonArrow side = 
+shiftButtonArrow : Orientation -> Color.Color -> GEl.Element
+shiftButtonArrow side color = 
   let shape = GCol.ngon 3 smallSize
-  in GCol.group [ shape |> GCol.filled Color.yellow, shape |> GCol.outlined defaultLine ]
+  in GCol.group [ shape |> GCol.filled color, shape |> GCol.outlined defaultLine ]
     |> GCol.rotate (degrees 270)
     |> GCol.rotate -(orientationAngle side)
     |> singleton |> GCol.collage pieceSize pieceSize
@@ -260,6 +270,7 @@ renderBoard board =
       renderTreasureAt pos = case Dict.get pos board.pieces of
         Nothing -> []
         Just piece -> piece.treasure 
+          `andThen` (\tr -> if Set.member tr board.collectedTreasures then Nothing else Just tr)
             |> Maybe.map renderTreasure 
             |> Maybe.map (GCol.move (b2c pos))
             |> maybeToList
@@ -288,11 +299,19 @@ unselectable = Html.style
   , ("user-select", "none")
   ]
 
+-- | Wraps an element in a div tag which prevents text selections.
 makeUnselectable : GEl.Element -> GEl.Element
 makeUnselectable el =
   let (w,h) = GEl.sizeOf el
   in Html.div [ unselectable ] [ Html.fromElement el ] |> Html.toElement w h
 
+colorIndicator : Color.Color -> GEl.Element -> GEl.Element
+colorIndicator color el = 
+  let h = snd (GEl.sizeOf el)
+  in GCol.collage 20 h [GCol.rect 10 (toFloat h * 0.9) |> GCol.filled color]
+    `GEl.beside` el
+
+-- | Displays the player list next to the game board.
 viewPlayerList : List Player -> GEl.Element
 viewPlayerList players = 
   let displayCurPlayer p = GEl.flow GEl.down 
@@ -304,10 +323,6 @@ viewPlayerList players =
         ] |> colorIndicator p.color
       displayNextPlayer i p = toString i ++ ". " ++ p.name ++ " (" ++ toString (List.length p.targets) ++ " remaining)"
         |> Text.plainText |> colorIndicator p.color
-      colorIndicator color el = 
-        let h = snd (GEl.sizeOf el)
-        in GCol.collage 20 h [GCol.rect 10 (toFloat h * 0.9) |> GCol.filled color]
-          `GEl.beside` el
       headingCur = Text.centered <| Text.bold <| Text.fromString "Current Player:"
       headingNext = Text.centered <| Text.bold <| Text.fromString "Next Players:"
       nextPlayers = GEl.flow GEl.down <| List.map2 displayNextPlayer [2..4] (List.tail players)
@@ -318,19 +333,22 @@ viewPlayerList players =
     , nextPlayers
     ]
 
+-- | Displays the free piece and buttons to rotate it.
 viewFreePiece : Piece -> GEl.Element
 viewFreePiece piece = 
-  let rotateCCWButton = shiftButtonArrow East
+  let rotateCCWButton = shiftButtonArrow East Color.blue
         |> GInp.clickable (Signal.send freeRotateChannel CCW)
-      rotateCWButton = shiftButtonArrow West
+      rotateCWButton = shiftButtonArrow West Color.blue
         |> GInp.clickable (Signal.send freeRotateChannel CW)
       controls = GEl.flow GEl.right 
         [ rotateCCWButton
-        , GCol.collage pieceSize pieceSize [renderPiece piece]
+        , GCol.collage pieceSize pieceSize 
+            [ renderPiece piece
+            , Maybe.map renderTreasure piece.treasure |> maybeToList |> GCol.group]
         , rotateCWButton ]
-      heading = Text.centered <| Text.bold <| Text.fromString "Piece to shift in:"
-  in heading `GEl.above` controls
+  in controls
 
+-- | Display in-game view.
 viewInGame : TurnState -> Board -> GEl.Element
 viewInGame turnState board = 
   let -- where should the shift buttons be places
@@ -346,10 +364,13 @@ viewInGame turnState board =
         North -> boardToCanvas board (idx, -1)
         South -> boardToCanvas board (idx, board.height)
       -- creates a clickable button
-      mkButton side idx = shiftButtonArrow side
-        |> GInp.clickable (Signal.send shiftChannel { side = side, index = idx} )
-        |> GCol.toForm
-        |> GCol.move (buttonPos side idx)
+      mkButton side idx = 
+        ( if Just { side = opposite side, index = idx } == board.lastShift
+            then shiftButtonArrow side Color.grey
+            else shiftButtonArrow side Color.yellow
+             |> GInp.clickable (Signal.send shiftChannel { side = side, index = idx} )
+        ) |> GCol.toForm
+          |> GCol.move (buttonPos side idx)
       -- creates all buttons
       shiftButtons = List.concatMap (\(s,is) -> List.map (mkButton s) is) shiftButtonSpec
       -- size in pixels of the board
@@ -361,27 +382,81 @@ viewInGame turnState board =
       -- game board
       boardElement = [renderBoard board] ++ shiftButtons
         |> GCol.collage (bsize.width+pieceSize*2) (bsize.height+pieceSize*2)
+
       infoElement = GEl.flow GEl.down
-        [ viewPlayerList board.players
+        [ GEl.spacer 0 100
+        , Text.fromString "Players"
+            |> Text.bold
+            |> Text.height 20
+            |> Text.leftAligned
+        , viewPlayerList board.players
+        , GEl.spacer 0 100
+        , Text.fromString "Piece to shift in"
+            |> Text.bold
+            |> Text.height 20
+            |> Text.leftAligned
         , viewFreePiece board.freePiece
+        , GEl.spacer 0 100
+        , Text.fromString "Instructions"
+            |> Text.bold
+            |> Text.height 20
+            |> Text.leftAligned
         , turnStateInfo
         ]
+
       content = makeUnselectable boardElement `GEl.beside` infoElement
     in content
 
+-- | Shows the startup screen asking for player names.
 viewAskPlayerNames : List GInp.Content -> GEl.Element
 viewAskPlayerNames contents = 
   let mkField idx chan content = GInp.field GInp.defaultStyle (Signal.send chan) ("Player " ++ toString idx) content
-      fields = GEl.flow GEl.right (List.map3 mkField [1..4] playerNameChannels contents )
-  in GEl.flow GEl.down 
-    [ Text.plainText "Participating Players:"
-    , fields
-    , GInp.button (Signal.send startGameChannel ()) "Start Game"
-    ]
+        `GEl.above` GEl.spacer 0 20
 
-viewGameOver : Player -> GEl.Element
-viewGameOver winner = Text.fromString winner.name ++ Text.fromString " has won!"
-  |> Text.centered
+      heading = (Text.fromString "Participating Players" |> Text.height 30 |> Text.centered)
+        `GEl.above` GEl.spacer 0 20
+
+      containerWidth = max (fst <| GEl.sizeOf fields) (fst <| GEl.sizeOf heading)
+      containerHeight = snd (GEl.sizeOf fields) + 20
+
+      fields = GEl.flow GEl.down (List.map3 mkField [1..4] playerNameChannels contents )
+
+      startButton = GInp.button (Signal.send startGameChannel ()) "Start Game"
+  in GEl.container 1200 810 GEl.middle
+    <| heading 
+      `GEl.above` GEl.container containerWidth containerHeight GEl.middle fields
+      `GEl.above` GEl.container containerWidth (snd (GEl.sizeOf startButton) + 2) GEl.middle startButton 
+
+viewGameOver : List Player -> GEl.Element
+viewGameOver (first::rest) = 
+  let displayEntry n player = toString n ++ ". " ++ player.name 
+          |> Text.fromString |> Text.height 20 |> Text.leftAligned
+          |> colorIndicator player.color 
+      displayRanked n cur ps = displayEntry n cur :: 
+        case ps of
+          [] -> [ ]
+          (p::pps) -> if rank p == rank cur 
+            then displayRanked n p pps
+            else displayRanked (n+1) p pps
+
+      heading = (Text.fromString "Game Over!" |> Text.height 40 |> Text.centered)
+
+      rankedList = GEl.flow GEl.down (displayRanked 1 first rest)
+
+      buttons = GEl.flow GEl.right
+        [ GInp.button (Signal.send restartSameChannel ()) "Restart with same players"
+        , GEl.spacer 20 20
+        , GInp.button (Signal.send restartNewChannel ()) "Restart with new players" ]
+
+      containerWidth = List.maximum [fst <| GEl.sizeOf heading, fst <| GEl.sizeOf rankedList, fst <| GEl.sizeOf buttons ]
+      headingHeight = snd (GEl.sizeOf heading) + 20
+      listHeight = snd (GEl.sizeOf rankedList) + 20
+      buttonHeight = snd (GEl.sizeOf buttons) + 20
+
+  in GEl.container 1200 810 GEl.middle
+    <| GEl.container containerWidth headingHeight GEl.middle heading
+        `GEl.above` GEl.container containerWidth listHeight GEl.middle rankedList
+        `GEl.above` GEl.container containerWidth buttonHeight GEl.middle buttons
 
 viewMain : Scene -> GEl.Element
 viewMain scene = case scene of 
@@ -395,6 +470,7 @@ viewMain scene = case scene of
 playerColors = [Color.red, Color.blue, Color.green, Color.yellow]
 playerHomes = [(0,0), (6,6), (0,6), (6,0)]
 
+-- | Initializes the Player values with random targets.
 initialPlayers : Random.Seed -> List String -> (List Player, Random.Seed)
 initialPlayers seed names = 
   let (targets, seed') = RndArr.shuffle seed allTreasures
@@ -404,6 +480,7 @@ initialPlayers seed names =
         , position = home, name = name, targets = Array.toList (targetsFor idx) }
   in (List.map4 mkPlayer names playerColors playerHomes [0..3], seed')
 
+-- | Creates a random initial board layout.
 initialBoard : Random.Seed -> List Player -> (Board, Random.Seed)
 initialBoard seed players = 
   let -- | Calculate positions of fixed pieces
@@ -422,10 +499,11 @@ initialBoard seed players =
         |> List.filter (not << flip Dict.member fixedPieces)
       -- | Associate loose pieces with coordinates
       movablePieces = Dict.fromList <| List.map2 (,) loosePieceCoords randomLst
-  in ({ width = 7, height = 7
-     , pieces = Dict.union fixedPieces movablePieces
-     , freePiece = freePiece
-     , players = players }, seed'')
+  in ( { width = 7, height = 7
+       , pieces = Dict.union fixedPieces movablePieces
+       , freePiece = freePiece, players = players
+       , lastShift = Nothing, collectedTreasures = Set.empty }
+     , seed'')
 
 -- | Initializes a new game from a seed and a list of player names.
 newGame : Random.Seed -> List String -> (Board, Random.Seed)
@@ -463,6 +541,15 @@ allTreasures = List.concat initialPieces ++ loosePieces
   |> Array.fromList
 
 -- * Game rules (size and player agnostic)
+
+-- | Assigns a rank to a player. Lower is better.
+-- If the player found all its targets and returned to the home base, the rank is 0,
+-- otherwise it's the number of remaining targets plus 1.
+rank : Player -> Int
+rank p = 
+  let remaining = List.length p.targets
+  in if remaining == 0 && p.position == p.home 
+    then 0 else remaining + 1
 
 -- | On a board side of a given length, return the movable indices.
 movableIndices : Int -> List Int
@@ -518,7 +605,8 @@ processTarget board =
       Just curPiece -> case (currentPlayer board).targets of
         [] -> board
         (curTarget::rest) -> if curPiece.treasure == Just curTarget
-          then updateCurrentPlayer { curPlayer | targets <- rest } board
+          then { board  | collectedTreasures <- Set.insert curTarget board.collectedTreasures }
+            |> updateCurrentPlayer { curPlayer | targets <- rest } 
           else board
       Nothing -> board
 
@@ -557,7 +645,7 @@ shift shiftCmd board =
         then { player | position <- if player.position == shiftedOut then shiftedIn else player.position `to` shiftDir }
         else player
       -- TODO: Take care of player figures
-  in { board | pieces <- newBoard, freePiece <- newFree, players <- List.map relocateToken board.players }
+  in { board | pieces <- newBoard, freePiece <- newFree, players <- List.map relocateToken board.players, lastShift <- Just shiftCmd }
 
 
 
@@ -574,6 +662,12 @@ freeRotateChannel = Signal.channel CW
 -- | Receiving events from the "start game" button
 startGameChannel : Signal.Channel ()
 startGameChannel = Signal.channel ()
+
+restartSameChannel : Signal.Channel ()
+restartSameChannel = Signal.channel ()
+
+restartNewChannel : Signal.Channel ()
+restartNewChannel = Signal.channel ()
 
 -- | Receiving events from the player name widget
 playerNameChannels : List (Signal.Channel GInp.Content)
@@ -602,6 +696,8 @@ collectEvents = Signal.mergeMany
   , ShiftRow <~ Signal.subscribe shiftChannel
   , MoveToken <~ moveCommands
   , always EndTurn <~ keyPresses keyEnter
+  , always RestartWithNewPlayers <~ Signal.subscribe restartNewChannel
+  , (RestartWithSamePlayers << fst) <~ Time.timestamp (Signal.subscribe restartSameChannel)
   ]
 
 -- | Central state handling function.
@@ -626,15 +722,30 @@ stepGame event scene = case scene of
       EndTurn -> 
         let afterTargetCheck = processTarget board
         in if hasWon (currentPlayer afterTargetCheck) 
-          then GameOver (currentPlayer afterTargetCheck)
+          then GameOver (List.sortBy rank afterTargetCheck.players)
           else InGame Shifting (nextPlayer afterTargetCheck)
         -- TODO: Check targets, check winning condition
       _ -> scene
-  _ -> scene
+  GameOver players -> case event of
+    RestartWithSamePlayers time -> newGame 
+      (Time.inMilliseconds time |> floor |> Random.initialSeed) 
+      (List.map (\p -> p.name) players) |> fst |> InGame Shifting
+    RestartWithNewPlayers -> initialState 
+    _ -> GameOver players
+
+initialState : Scene
+initialState = AskPlayerNames (List.repeat 4 GInp.noContent)
+
+testGameOverState : Scene
+testGameOverState = GameOver <| List.sortBy rank
+  [ { name = "Max Muster", color = Color.blue, targets = [], home = (6,6), position = (0,0) }
+  , { name = "Hinz", color = Color.green, targets = ["Djinn"], home = (0,6), position = (0,6) }
+  , { name = "John Doe", color = Color.red, targets = [], home = (0,0), position = (0,0) }
+  ]
 
 -- | Takes user events and produces a scene to display.
 runGame : Signal UserEvent -> Signal Scene
-runGame = Signal.foldp stepGame (AskPlayerNames (List.repeat 4 GInp.noContent))
+runGame = Signal.foldp stepGame initialState
 
 -- | Glue everything together.
 main : Signal GEl.Element
