@@ -1,6 +1,9 @@
 module Util where
 
 import Dict
+import Graphics.Element as GEl
+import Html
+import Html.Attributes as Html
 import Keyboard
 import List
 import List ((::))
@@ -57,10 +60,26 @@ traverse f xs = case xs of
 
 -- | Subscribe a list of channels and get a signal of lists.
 subscribeMany : List (Signal.Channel a) -> Signal (List a)
-subscribeMany chs = case chs of
-  [] -> Signal.constant []
-  (x::xs) -> (::) <~ Signal.subscribe x ~ subscribeMany xs
+subscribeMany = traverse Signal.subscribe
 
 -- | When you know there must be an element.
 unsafeGet : comparable -> Dict.Dict comparable v -> v
 unsafeGet key = Dict.get key >> maybeToList >> List.head
+
+
+-- CSS to make element unselectable
+unselectable : Html.Attribute
+unselectable = Html.style
+  [ ("-webkit-touch-callout", "none")
+  , ("-webkit-user-select", "none")
+  , ("-khtml-user-select", "none")
+  , ("-moz-user-select", "none")
+  , ("-ms-user-select", "none")
+  , ("user-select", "none")
+  ]
+
+-- | Wraps an element in a div tag which prevents text selections.
+makeUnselectable : GEl.Element -> GEl.Element
+makeUnselectable el =
+  let (w,h) = GEl.sizeOf el
+  in Html.div [ unselectable ] [ Html.fromElement el ] |> Html.toElement w h

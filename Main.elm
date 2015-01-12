@@ -181,23 +181,6 @@ renderBoard shiftProgress board =
 
 -- * Interface rendering
 
--- CSS to make element unselectable
-unselectable : Html.Attribute
-unselectable = Html.style
-  [ ("-webkit-touch-callout", "none")
-  , ("-webkit-user-select", "none")
-  , ("-khtml-user-select", "none")
-  , ("-moz-user-select", "none")
-  , ("-ms-user-select", "none")
-  , ("user-select", "none")
-  ]
-
--- | Wraps an element in a div tag which prevents text selections.
-makeUnselectable : GEl.Element -> GEl.Element
-makeUnselectable el =
-  let (w,h) = GEl.sizeOf el
-  in Html.div [ unselectable ] [ Html.fromElement el ] |> Html.toElement w h
-
 colorIndicator : Color.Color -> GEl.Element -> GEl.Element
 colorIndicator color el = 
   let h = snd (GEl.sizeOf el)
@@ -321,7 +304,7 @@ viewInGame turnState board =
         , turnStateInfo
         ]
 
-      content = makeUnselectable boardElement `GEl.beside` infoElement
+      content = Util.makeUnselectable boardElement `GEl.beside` infoElement
     in content
 
 -- | Shows the startup screen asking for player names.
