@@ -83,3 +83,6 @@ makeUnselectable : GEl.Element -> GEl.Element
 makeUnselectable el =
   let (w,h) = GEl.sizeOf el
   in Html.div [ unselectable ] [ Html.fromElement el ] |> Html.toElement w h
+
+--mixRGB : Float -> Color.Color -> Color.Color -> Color.Color
+--mixRGB mix c1 c2 = 

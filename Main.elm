@@ -73,9 +73,12 @@ renderTreasure t = Text.fromString t
     |> Text.centered |> GCol.toForm
 
 -- | Draws a piece to a form. The origin is at the center of the piece.
-renderPiece : Piece -> GCol.Form
-renderPiece blk = 
-  let wall = GCol.square pieceSize |> GCol.filled Color.darkBrown
+renderPiece : Bool -> Piece -> GCol.Form
+renderPiece movable blk = 
+  let wall = GCol.square pieceSize 
+        |> if movable 
+            then GCol.filled Color.darkBrown
+            else GCol.filled (Color.rgb 120 68 33)
       way = GCol.square (1.5*smallSize) |> GCol.filled Color.lightBrown
       outline = GCol.square pieceSize |> GCol.outlined (GCol.solid Color.brown)
       -- which sides are walls depends on piece
@@ -123,6 +126,13 @@ shiftButtonArrow side color =
     |> GCol.rotate -(orientationAngle side)
     |> Util.singleton |> GCol.collage pieceSize pieceSize
 
+rotateButtonArrow : AngularDir -> Bool -> GEl.Element
+rotateButtonArrow angularDir enabled =
+  let dirStr = toString angularDir
+      enabledStr = if enabled then "enabled" else "disabled"
+      imgSrc = "rotate" ++ dirStr ++ enabledStr ++ ".svg"
+  in GEl.image pieceSize pieceSize imgSrc
+
 -- | Renders the board.
 renderBoard : Maybe (Shift, Float) -> Board -> GCol.Form
 renderBoard shiftProgress board = 
@@ -130,7 +140,7 @@ renderBoard shiftProgress board =
       -- render ground of cell
       renderGroundAt pos = case Dict.get pos board.pieces of
         Nothing -> []
-        Just piece -> [renderPiece piece 
+        Just piece -> [renderPiece (cellMovable pos) piece 
           |> GCol.move (b2c pos) |> shiftAnim pos ]
       -- render treasure of cell
       renderTreasureAt pos = case Dict.get pos board.pieces of
@@ -141,7 +151,7 @@ renderBoard shiftProgress board =
             |> Maybe.map (GCol.move (b2c pos) >> shiftAnim pos)
             |> Util.maybeToList
 
-      freePieceAnimated = GCol.group (renderPiece board.freePiece 
+      freePieceAnimated = GCol.group (renderPiece True board.freePiece 
             :: Util.maybeToList (Maybe.map renderTreasure board.freePiece.treasure)
           ) |> GCol.move (b2c freePiecePos)
             |> shiftAnim freePiecePos
@@ -212,14 +222,10 @@ viewPlayerList players =
 -- | Displays the free piece and buttons to rotate it.
 viewFreePiece : TurnState -> Piece -> GEl.Element
 viewFreePiece turnState piece = 
-  let rotateCCWButton = if isShiftState
-        then shiftButtonArrow East Color.yellow
-          |> GInp.clickable (Signal.send freeRotateChannel CCW)
-        else shiftButtonArrow East Color.grey
-      rotateCWButton = if isShiftState
-        then shiftButtonArrow West Color.yellow
-          |> GInp.clickable (Signal.send freeRotateChannel CW)
-        else shiftButtonArrow West Color.grey
+  let rotateButton dir = if isShiftState
+        then rotateButtonArrow dir True
+          |> GInp.clickable (Signal.send freeRotateChannel dir)
+        else rotateButtonArrow dir False
 
       isShiftState = turnState == WaitForShift
       isShifting = case turnState of
@@ -227,14 +233,14 @@ viewFreePiece turnState piece =
         _ -> False
 
       controls = GEl.flow GEl.right 
-        [ rotateCCWButton
+        [ rotateButton CCW
         , if isShifting 
             then GEl.spacer pieceSize pieceSize
             else GCol.collage pieceSize pieceSize 
-                  [ renderPiece piece
+                  [ renderPiece True piece
                   , Maybe.map renderTreasure piece.treasure 
                     |> Util.maybeToList |> GCol.group ]
-        , rotateCWButton ]
+        , rotateButton CW ]
   in controls
 
 -- | Display in-game view.
@@ -390,11 +396,13 @@ playerNameChannels = List.map (\f -> Signal.channel GInp.noContent) playerColors
 
 moveCommands : Signal Orientation
 moveCommands = Signal.mergeMany
-  -- Keys.arrowUp.keyCode is not accepted
+  -- NOTE: Keys.arrowUp.keyCode is not accepted
   [ always North <~ Util.keyPresses (.keyCode Keys.arrowUp) 
   , always South <~ Util.keyPresses (.keyCode Keys.arrowDown)
-  , always West  <~ Util.keyPresses (.keyCode Keys.arrowLeft)
-  , always East  <~ Util.keyPresses (.keyCode Keys.arrowRight)
+
+   -- NOTE: the library swapped left and right
+  , always West  <~ Util.keyPresses (.keyCode Keys.arrowRight)
+  , always East  <~ Util.keyPresses (.keyCode Keys.arrowLeft)
   ]
 
 -- | Collect all user events

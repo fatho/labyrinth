@@ -252,6 +252,9 @@ movableRows board = movableIndices board.height
 movableCols : Board -> List Int
 movableCols board = movableIndices board.width
 
+cellMovable : Coord -> Bool
+cellMovable (x,y) = (x % 2 == 1) || (y % 2 == 1)
+
 -- | Next players turn.
 nextPlayer : Board -> Board
 nextPlayer board = let (p::ps) = board.players
