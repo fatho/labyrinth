@@ -327,7 +327,10 @@ viewAskPlayerNames contents =
 
       fields = GEl.flow GEl.down (List.map3 mkField [1..4] playerNameChannels contents )
 
-      startButton = GInp.button (Signal.send startGameChannel ()) "Start Game"
+      startButton =
+        if List.length (extractPlayerNames contents) >= 2
+          then GInp.button (Signal.send startGameChannel ()) "Start Game"
+          else GEl.spacer 0 40
   in GEl.container 1200 810 GEl.middle
     <| heading 
       `GEl.above` GEl.container containerWidth containerHeight GEl.middle fields
@@ -419,13 +422,17 @@ collectEvents = Signal.mergeMany
   , ShiftAnimation <~ Time.fps 30
   ]
 
+-- | Transforms a list of text field contents to a list of player names ignoring empty fields.
+extractPlayerNames : List GInp.Content -> List String
+extractPlayerNames = List.filterMap (\c -> if String.length c.string > 0 then Just c.string else Nothing)
+
 -- | Central state handling function.
 stepGame : UserEvent -> Scene -> Scene
 stepGame event scene = case scene of
   AskPlayerNames ps -> case event of
     UpdatePlayerNames ps' -> AskPlayerNames ps'
     StartGame t -> 
-      let players = List.filterMap (\c -> if String.length c.string > 0 then Just c.string else Nothing) ps
+      let players = extractPlayerNames ps
       in if List.length players >= 2 
         then newGame (Time.inMilliseconds t |> floor |> Random.initialSeed) players
           |> fst |> InGame WaitForShift
