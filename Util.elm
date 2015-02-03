@@ -66,7 +66,6 @@ subscribeMany = traverse Signal.subscribe
 unsafeGet : comparable -> Dict.Dict comparable v -> v
 unsafeGet key = Dict.get key >> maybeToList >> List.head
 
-
 -- CSS to make element unselectable
 unselectable : Html.Attribute
 unselectable = Html.style
@@ -77,6 +76,12 @@ unselectable = Html.style
   , ("-ms-user-select", "none")
   , ("user-select", "none")
   ]
+
+-- | Sets the CSS class of an element.
+withClass : String -> GEl.Element -> GEl.Element
+withClass class el =
+  let (w,h) = GEl.sizeOf el
+  in Html.div [ Html.class class ] [ Html.fromElement el ] |> Html.toElement w h
 
 -- | Wraps an element in a div tag which prevents text selections.
 makeUnselectable : GEl.Element -> GEl.Element

@@ -204,8 +204,10 @@ viewPlayerList players =
         [ Text.leftAligned <| Text.fromString <| p.name ++ " (" ++ toString (List.length p.targets) ++ " remaining)" 
         , case p.targets of
             [] -> Text.plainText "All targets reached, return to base!"
-            (x::_) -> Text.fromString "Next target is: " ++ Text.color Color.white (Text.fromString x)
-              |> Text.leftAligned
+            (x::_) -> GEl.flow GEl.right
+              [ Text.fromString "Next target is: " |> Text.leftAligned
+              , Util.withClass "hover_disclose" (Text.fromString x |> Text.leftAligned)
+              ]
         ] |> colorIndicator p.color
       displayNextPlayer i p = toString i ++ ". " ++ p.name ++ " (" ++ toString (List.length p.targets) ++ " remaining)"
         |> Text.plainText |> colorIndicator p.color
@@ -274,8 +276,8 @@ viewInGame turnState board =
       turnStateInfo = case turnState of
         WaitForShift -> Text.plainText
           <| "Your current target is displayed in white and can be\n"
-          ++ "revealed by selecting that part of the page. Make\n"
-          ++ "sure the other players don't see it.\n"
+          ++ "revealed by hovering that part of the page with the cursor.\n"
+          ++ "Make sure the other players don't see it.\n"
           ++ "Now shift a row or column.\n"
           ++ "You may rotate the free piece with the buttons above."
         Shifting _ _ -> Text.plainText "Shifting..."
