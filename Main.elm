@@ -105,9 +105,10 @@ boardToCanvas board (x,y) =
 -- | Renders a player's home.
 renderHome : Color.Color -> GCol.Form
 renderHome col = 
-  let homeStyle   = { defaultLine | width <- 3 }
+  let homeStyle   = { defaultLine | width <- 1, color <- homeColor Color.black}
       homeCircle  = GCol.circle (smallSize - 10)
-  in GCol.group [ homeCircle |> GCol.filled col, homeCircle |> GCol.outlined homeStyle ]
+      homeColor col = let c = Color.toRgb col in Color.rgba c.red c.green c.blue 0.5
+  in GCol.group [ homeCircle |> GCol.filled (homeColor col), homeCircle |> GCol.outlined homeStyle ]
 
 -- | Renders a player's token.
 playerToken : Color.Color -> GCol.Form

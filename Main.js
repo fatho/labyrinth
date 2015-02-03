@@ -5504,7 +5504,7 @@ Elm.Main.make = function (_elm) {
                                case "[]":
                                return $Text.plainText("All targets reached, return to base!");}
                             _U.badCase($moduleName,
-                            "between lines 205 and 211");
+                            "between lines 206 and 212");
                          }()])));
          };
          return A2($Graphics$Element.flow,
@@ -5564,7 +5564,7 @@ Elm.Main.make = function (_elm) {
                           case "[]":
                           return _L.fromArray([]);}
                        _U.badCase($moduleName,
-                       "between lines 347 and 353");
+                       "between lines 348 and 354");
                     }());
                  });
                  var rankedList = A2($Graphics$Element.flow,
@@ -5599,7 +5599,7 @@ Elm.Main.make = function (_elm) {
                  buttons)));
               }();}
          _U.badCase($moduleName,
-         "between lines 343 and 370");
+         "between lines 344 and 371");
       }();
    };
    var renderTreasure = function (t) {
@@ -5700,11 +5700,23 @@ Elm.Main.make = function (_elm) {
    });
    var renderHome = function (col) {
       return function () {
+         var homeColor = function (col) {
+            return function () {
+               var c = $Color.toRgb(col);
+               return A4($Color.rgba,
+               c.red,
+               c.green,
+               c.blue,
+               0.5);
+            }();
+         };
          var homeCircle = $Graphics$Collage.circle(smallSize - 10);
          var homeStyle = _U.replace([["width"
-                                     ,3]],
+                                     ,1]
+                                    ,["color"
+                                     ,homeColor($Color.black)]],
          $Graphics$Collage.defaultLine);
-         return $Graphics$Collage.group(_L.fromArray([$Graphics$Collage.filled(col)(homeCircle)
+         return $Graphics$Collage.group(_L.fromArray([$Graphics$Collage.filled(homeColor(col))(homeCircle)
                                                      ,$Graphics$Collage.outlined(homeStyle)(homeCircle)]));
       }();
    };
@@ -5748,7 +5760,7 @@ Elm.Main.make = function (_elm) {
                       ,_0: shiftFactor * pieceSize
                       ,_1: 0};}
             _U.badCase($moduleName,
-            "between lines 168 and 174");
+            "between lines 169 and 175");
          }();
          var isShifted = function (_v19) {
             return function () {
@@ -5758,7 +5770,7 @@ Elm.Main.make = function (_elm) {
                     _v19._1) || $Game.isVertical(shiftCmd.side) && _U.eq(shiftCmd.index,
                     _v19._0);}
                _U.badCase($moduleName,
-               "between lines 166 and 167");
+               "between lines 167 and 168");
             }();
          };
          var shiftAnim = function (pos) {
@@ -5786,7 +5798,7 @@ Elm.Main.make = function (_elm) {
                       ,_0: -1
                       ,_1: shiftCmd.index};}
             _U.badCase($moduleName,
-            "between lines 159 and 166");
+            "between lines 160 and 167");
          }();
          var b2c = boardToCanvas(board);
          var renderGroundAt = function (pos) {
@@ -5802,7 +5814,7 @@ Elm.Main.make = function (_elm) {
                   case "Nothing":
                   return _L.fromArray([]);}
                _U.badCase($moduleName,
-               "between lines 141 and 146");
+               "between lines 142 and 147");
             }();
          };
          var renderTreasureAt = function (pos) {
@@ -5824,7 +5836,7 @@ Elm.Main.make = function (_elm) {
                   case "Nothing":
                   return _L.fromArray([]);}
                _U.badCase($moduleName,
-               "between lines 146 and 154");
+               "between lines 147 and 155");
             }();
          };
          var treasures = $List.concatMap(renderTreasureAt)(A2($Util.cartProd,
@@ -5941,14 +5953,14 @@ Elm.Main.make = function (_elm) {
                return $Text.plainText(A2($Basics._op["++"],
                  "Your current target is displayed in white and can be\n",
                  A2($Basics._op["++"],
-                 "revealed by selecting that part of the page. Make\n",
+                 "revealed by hovering that part of the page with the cursor.\n",
                  A2($Basics._op["++"],
-                 "sure the other players don\'t see it.\n",
+                 "Make sure the other players don\'t see it.\n",
                  A2($Basics._op["++"],
                  "Now shift a row or column.\n",
                  "You may rotate the free piece with the buttons above.")))));}
             _U.badCase($moduleName,
-            "between lines 276 and 288");
+            "between lines 277 and 289");
          }();
          var infoElement = A2($Graphics$Element.flow,
          $Graphics$Element.down,
@@ -5999,7 +6011,7 @@ Elm.Main.make = function (_elm) {
                     ,_0: -1
                     ,_1: idx});}
                _U.badCase($moduleName,
-               "between lines 258 and 264");
+               "between lines 259 and 265");
             }();
          });
          var mkButton = F2(function (side,
@@ -6041,7 +6053,7 @@ Elm.Main.make = function (_elm) {
                     mkButton(_v38._0),
                     _v38._1);}
                _U.badCase($moduleName,
-               "on line 272, column 49 to 73");
+               "on line 273, column 49 to 73");
             }();
          },
          shiftButtonSpec);
@@ -6070,7 +6082,7 @@ Elm.Main.make = function (_elm) {
               scene._0,
               scene._1);}
          _U.badCase($moduleName,
-         "between lines 373 and 376");
+         "between lines 374 and 377");
       }();
    };
    var GameOver = function (a) {
@@ -6196,7 +6208,7 @@ Elm.Main.make = function (_elm) {
                                  scene._1);
                               }();}
                          _U.badCase($moduleName,
-                         "between lines 449 and 454");
+                         "between lines 450 and 455");
                       }();
                     case "WaitForShift":
                     return function () {
@@ -6214,10 +6226,10 @@ Elm.Main.make = function (_elm) {
                          return scene;
                       }();}
                  _U.badCase($moduleName,
-                 "between lines 443 and 463");
+                 "between lines 444 and 464");
               }();}
          _U.badCase($moduleName,
-         "between lines 433 and 468");
+         "between lines 434 and 469");
       }();
    });
    var runGame = function ($) {
