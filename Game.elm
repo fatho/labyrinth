@@ -206,24 +206,24 @@ newGame seed playerNames =
 -- | Fixated pieces on the board, row major.
 initialPieces : List (List Piece)
 initialPieces = 
-  [[ curve East Nothing, tjunction South (Just "Book"), tjunction South (Just "Coin Purse"), curve South Nothing ]
-  ,[ tjunction East (Just "Map"), tjunction East (Just "Crown"), tjunction South (Just "Keys"), tjunction West (Just "Skull")]
-  ,[ tjunction East (Just "Ring"), tjunction North (Just "Chest"), tjunction West (Just "Emerald"), tjunction West (Just "Sword")]
-  ,[ curve North Nothing, tjunction North (Just "Chandelier"), tjunction North (Just "Helmet"), curve West Nothing ]]
+  [[ curve East Nothing, tjunction South (Just "Monad"), tjunction South (Just "Haskell"), curve South Nothing ]
+  ,[ tjunction East (Just "Elm"), tjunction East (Just "FRP"), tjunction South (Just "Functor"), tjunction West (Just "Lens")]
+  ,[ tjunction East (Just "Ring"), tjunction North (Just "Monoid"), tjunction West (Just "Category"), tjunction West (Just "Arrow")]
+  ,[ curve North Nothing, tjunction North (Just "Function"), tjunction North (Just "ADT"), curve West Nothing ]]
 
 -- | List of loose pieces in the game.
 loosePieces : List Piece
 loosePieces = List.concat
-  [[ curve North Nothing, tjunction North (Just "Fairy"), straight North Nothing ]
-  ,[ curve North (Just "Salamander"), tjunction North (Just "Ghost"), straight North Nothing
+  [[ curve North Nothing, tjunction North (Just "GHC"), straight North Nothing ]
+  ,[ curve North (Just "Applicative"), tjunction North (Just "List"), straight North Nothing
    , straight North Nothing, curve North Nothing, curve North Nothing, straight North Nothing]
   ,[ curve North Nothing, straight North Nothing, straight North Nothing]
   ,[ curve North Nothing, straight North Nothing, curve North Nothing, curve North Nothing, straight North Nothing
-   , tjunction North (Just "Halfling"), straight North Nothing]
+   , tjunction North (Just "Record"), straight North Nothing]
   ,[ curve North Nothing, curve North Nothing, curve North Nothing ]
-  ,[ straight North Nothing, curve North (Just "Moth"), straight North Nothing, tjunction North (Just "Djinn"), tjunction North (Just "Bat")
-   , tjunction North (Just "Dragon"), curve North (Just "Spider")]
-  ,[ straight North Nothing, curve North (Just "Owl"), curve North (Just "Rat"), curve North (Just "Scarab")] ]
+  ,[ straight North Nothing, curve North (Just "Signal"), straight North Nothing, tjunction North (Just "Idris"), tjunction North (Just "fmap")
+   , tjunction North (Just "Profunctor"), curve North (Just "Maybe")]
+  ,[ straight North Nothing, curve North (Just "Lambda"), curve North (Just "Curry"), curve North (Just "Agda")] ]
 
 -- | A list of all treasures
 allTreasures : Array.Array Treasure

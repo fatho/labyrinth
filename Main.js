@@ -2314,46 +2314,46 @@ Elm.Game.make = function (_elm) {
                                                   $Maybe.Nothing)
                                                   ,A2(tjunction,
                                                   South,
-                                                  $Maybe.Just("Book"))
+                                                  $Maybe.Just("Monad"))
                                                   ,A2(tjunction,
                                                   South,
-                                                  $Maybe.Just("Coin Purse"))
+                                                  $Maybe.Just("Haskell"))
                                                   ,A2(curve,
                                                   South,
                                                   $Maybe.Nothing)])
                                     ,_L.fromArray([A2(tjunction,
                                                   East,
-                                                  $Maybe.Just("Map"))
+                                                  $Maybe.Just("Elm"))
                                                   ,A2(tjunction,
                                                   East,
-                                                  $Maybe.Just("Crown"))
+                                                  $Maybe.Just("FRP"))
                                                   ,A2(tjunction,
                                                   South,
-                                                  $Maybe.Just("Keys"))
+                                                  $Maybe.Just("Functor"))
                                                   ,A2(tjunction,
                                                   West,
-                                                  $Maybe.Just("Skull"))])
+                                                  $Maybe.Just("Lens"))])
                                     ,_L.fromArray([A2(tjunction,
                                                   East,
                                                   $Maybe.Just("Ring"))
                                                   ,A2(tjunction,
                                                   North,
-                                                  $Maybe.Just("Chest"))
+                                                  $Maybe.Just("Monoid"))
                                                   ,A2(tjunction,
                                                   West,
-                                                  $Maybe.Just("Emerald"))
+                                                  $Maybe.Just("Category"))
                                                   ,A2(tjunction,
                                                   West,
-                                                  $Maybe.Just("Sword"))])
+                                                  $Maybe.Just("Arrow"))])
                                     ,_L.fromArray([A2(curve,
                                                   North,
                                                   $Maybe.Nothing)
                                                   ,A2(tjunction,
                                                   North,
-                                                  $Maybe.Just("Chandelier"))
+                                                  $Maybe.Just("Function"))
                                                   ,A2(tjunction,
                                                   North,
-                                                  $Maybe.Just("Helmet"))
+                                                  $Maybe.Just("ADT"))
                                                   ,A2(curve,
                                                   West,
                                                   $Maybe.Nothing)])]);
@@ -2362,16 +2362,16 @@ Elm.Game.make = function (_elm) {
                                                              $Maybe.Nothing)
                                                              ,A2(tjunction,
                                                              North,
-                                                             $Maybe.Just("Fairy"))
+                                                             $Maybe.Just("GHC"))
                                                              ,A2(straight,
                                                              North,
                                                              $Maybe.Nothing)])
                                                ,_L.fromArray([A2(curve,
                                                              North,
-                                                             $Maybe.Just("Salamander"))
+                                                             $Maybe.Just("Applicative"))
                                                              ,A2(tjunction,
                                                              North,
-                                                             $Maybe.Just("Ghost"))
+                                                             $Maybe.Just("List"))
                                                              ,A2(straight,
                                                              North,
                                                              $Maybe.Nothing)
@@ -2413,7 +2413,7 @@ Elm.Game.make = function (_elm) {
                                                              $Maybe.Nothing)
                                                              ,A2(tjunction,
                                                              North,
-                                                             $Maybe.Just("Halfling"))
+                                                             $Maybe.Just("Record"))
                                                              ,A2(straight,
                                                              North,
                                                              $Maybe.Nothing)])
@@ -2431,34 +2431,34 @@ Elm.Game.make = function (_elm) {
                                                              $Maybe.Nothing)
                                                              ,A2(curve,
                                                              North,
-                                                             $Maybe.Just("Moth"))
+                                                             $Maybe.Just("Signal"))
                                                              ,A2(straight,
                                                              North,
                                                              $Maybe.Nothing)
                                                              ,A2(tjunction,
                                                              North,
-                                                             $Maybe.Just("Djinn"))
+                                                             $Maybe.Just("Idris"))
                                                              ,A2(tjunction,
                                                              North,
-                                                             $Maybe.Just("Bat"))
+                                                             $Maybe.Just("fmap"))
                                                              ,A2(tjunction,
                                                              North,
-                                                             $Maybe.Just("Dragon"))
+                                                             $Maybe.Just("Profunctor"))
                                                              ,A2(curve,
                                                              North,
-                                                             $Maybe.Just("Spider"))])
+                                                             $Maybe.Just("Maybe"))])
                                                ,_L.fromArray([A2(straight,
                                                              North,
                                                              $Maybe.Nothing)
                                                              ,A2(curve,
                                                              North,
-                                                             $Maybe.Just("Owl"))
+                                                             $Maybe.Just("Lambda"))
                                                              ,A2(curve,
                                                              North,
-                                                             $Maybe.Just("Rat"))
+                                                             $Maybe.Just("Curry"))
                                                              ,A2(curve,
                                                              North,
-                                                             $Maybe.Just("Scarab"))])]));
+                                                             $Maybe.Just("Agda"))])]));
    var initialBoard = F2(function (seed,
    players) {
       return function () {
